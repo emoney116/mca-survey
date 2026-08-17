@@ -95,6 +95,113 @@ async function assertNoOverflow(page, label) {
   }
 }
 
+async function assertCompactRankingLayout(page, width) {
+  const result = await page.evaluate((viewportWidth) => {
+    function rectFor(selector, root = document) {
+      const element = root.querySelector(selector);
+
+      if (!element) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+
+      return {
+        top: rect.top,
+        bottom: rect.bottom,
+        height: rect.height,
+        width: rect.width,
+      };
+    }
+
+    function lineCheck(selector) {
+      const element = document.querySelector(selector);
+
+      if (!element) {
+        return { wraps: true, missing: true, text: selector };
+      }
+
+      const styles = window.getComputedStyle(element);
+      const fontSize = Number.parseFloat(styles.fontSize);
+      const lineHeight = Number.parseFloat(styles.lineHeight) || fontSize * 1.2;
+      const rect = element.getBoundingClientRect();
+
+      return {
+        wraps: rect.height > lineHeight * 1.35,
+        missing: false,
+        text: element.textContent?.trim() ?? selector,
+        height: rect.height,
+        lineHeight,
+      };
+    }
+
+    const cards = Array.from(document.querySelectorAll(".ranking-card"));
+    const cardIssues = cards.flatMap((card, index) => {
+      const cardRect = card.getBoundingClientRect();
+      const label = card.querySelector(".ranking-label");
+      const labelRect = label?.getBoundingClientRect();
+      const actionsRect = rectFor(".ranking-actions", card);
+      const handleRect = rectFor(".drag-handle", card);
+      const cardCenter = cardRect.top + cardRect.height / 2;
+      const actionCenter = actionsRect ? actionsRect.top + actionsRect.height / 2 : 0;
+      const handleCenter = handleRect ? handleRect.top + handleRect.height / 2 : 0;
+      const maxHeight = viewportWidth === 320 ? 66 : 64;
+      const issues = [];
+
+      if (cardRect.height < 56 || cardRect.height > maxHeight) {
+        issues.push(`card ${index + 1} height ${cardRect.height.toFixed(1)}px`);
+      }
+
+      if (!actionsRect || Math.abs(actionCenter - cardCenter) > 5) {
+        issues.push(`card ${index + 1} actions not vertically centered`);
+      }
+
+      if (!handleRect || Math.abs(handleCenter - cardCenter) > 5) {
+        issues.push(`card ${index + 1} handle not vertically centered`);
+      }
+
+      if (label && labelRect) {
+        const styles = window.getComputedStyle(label);
+        const fontSize = Number.parseFloat(styles.fontSize);
+        const lineHeight = Number.parseFloat(styles.lineHeight) || fontSize * 1.2;
+
+        if (labelRect.height > lineHeight * 1.35) {
+          issues.push(`card ${index + 1} label wraps`);
+        }
+
+        if (viewportWidth >= 375 && label.scrollWidth > label.clientWidth) {
+          issues.push(`card ${index + 1} label clips: ${label.textContent?.trim()}`);
+        }
+      }
+
+      return issues;
+    });
+
+    return {
+      cardIssues,
+      heading: lineCheck(".survey-header h1"),
+      intro: lineCheck(".intro"),
+      cardCount: cards.length,
+    };
+  }, width);
+
+  if (result.cardCount !== goals.length) {
+    throw new Error(`survey-${width}: expected ${goals.length} ranking cards, got ${result.cardCount}`);
+  }
+
+  if (result.heading.wraps) {
+    throw new Error(`survey-${width}: heading wraps (${result.heading.text})`);
+  }
+
+  if (result.intro.wraps) {
+    throw new Error(`survey-${width}: intro wraps (${result.intro.text})`);
+  }
+
+  if (result.cardIssues.length > 0) {
+    throw new Error(`survey-${width}: ${result.cardIssues.join("; ")}`);
+  }
+}
+
 async function dispatchTouchDrag(page, sourceLocator, targetLocator) {
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
@@ -161,8 +268,9 @@ async function run() {
   for (const width of [320, 375, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(baseUrl, { waitUntil: "networkidle" });
-    await page.getByRole("heading", { name: "Fall Development Survey" }).waitFor();
+    await page.getByRole("heading", { name: "Fall 2026 Development Survey" }).waitFor();
     await assertNoOverflow(page, `survey-${width}`);
+    await assertCompactRankingLayout(page, width);
     await page.screenshot({
       path: path.join(screenshotDir, `survey-${width}.png`),
       fullPage: true,
@@ -177,7 +285,7 @@ async function run() {
   await dispatchTouchDrag(
     page,
     page.getByLabel("Drag Get stronger"),
-    page.getByLabel("Drag Get quicker / improve agility"),
+    page.getByLabel("Drag Improve agility"),
   );
   await page
     .getByLabel("What is the #1 thing you personally want to accomplish this fall?")

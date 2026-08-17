@@ -39,6 +39,19 @@ type SortableGoalCardProps = {
   overlay?: boolean;
 };
 
+const COMPACT_GOAL_LABELS: Record<GoalKey, string> = {
+  "get-stronger": "Get stronger",
+  "sprint-speed": "Improve sprint speed",
+  agility: "Improve agility",
+  "lose-body-fat": "Lose body fat",
+  "gain-weight": "Gain weight",
+  nutrition: "Improve nutrition",
+  "flexibility-mobility": "Improve flexibility & mobility",
+  conditioning: "Improve stamina & conditioning",
+  "core-strength": "Improve core strength",
+  "sleep-schedule": "Improve sleep schedule",
+};
+
 function SortableGoalCard({
   goalKey,
   rank,
@@ -59,6 +72,8 @@ function SortableGoalCard({
     return null;
   }
 
+  const displayLabel = COMPACT_GOAL_LABELS[goalKey];
+  const labelClassName = `ranking-label ${displayLabel.length > 25 ? "is-long-label" : ""}`;
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -74,16 +89,16 @@ function SortableGoalCard({
         {rank}
       </div>
       <div className="ranking-copy">
-        <span>{goal.label}</span>
+        <span className={labelClassName}>{displayLabel}</span>
       </div>
-      <div className="ranking-actions" aria-label={`Move ${goal.label}`}>
+      <div className="ranking-actions" aria-label={`Move ${displayLabel}`}>
         <button
           type="button"
           className="icon-button"
           onClick={onMoveUp}
           disabled={!canMoveUp}
-          aria-label={`Move ${goal.label} up`}
-          title={`Move ${goal.label} up`}
+          aria-label={`Move ${displayLabel} up`}
+          title={`Move ${displayLabel} up`}
         >
           <ChevronUp aria-hidden="true" size={18} />
         </button>
@@ -92,8 +107,8 @@ function SortableGoalCard({
           className="icon-button"
           onClick={onMoveDown}
           disabled={!canMoveDown}
-          aria-label={`Move ${goal.label} down`}
-          title={`Move ${goal.label} down`}
+          aria-label={`Move ${displayLabel} down`}
+          title={`Move ${displayLabel} down`}
         >
           <ChevronDown aria-hidden="true" size={18} />
         </button>
@@ -102,8 +117,8 @@ function SortableGoalCard({
         ref={setActivatorNodeRef}
         type="button"
         className="drag-handle"
-        aria-label={`Drag ${goal.label}`}
-        title={`Drag ${goal.label}`}
+        aria-label={`Drag ${displayLabel}`}
+        title={`Drag ${displayLabel}`}
         {...attributes}
         {...listeners}
       >

@@ -137,10 +137,8 @@ export function SurveyPage() {
           <MetrolinaLogo className="survey-logo" priority />
           <div>
             <p className="eyebrow">Metrolina Baseball</p>
-            <h1>Fall Development Survey</h1>
-            <p className="intro">
-              Rank the areas you want to improve this fall. #1 should be your highest priority.
-            </p>
+            <h1>Fall 2026 Development Survey</h1>
+            <p className="intro">Rank the areas you want to improve this fall.</p>
           </div>
         </header>
 
@@ -164,7 +162,7 @@ export function SurveyPage() {
           <div className="ranking-heading">
             <div>
               <h2 id="ranking-heading">Rank Your Goals</h2>
-              <p>#1 Highest Priority to #10 Lowest Priority</p>
+              <p>#1 Highest Priority &middot; #10 Lowest Priority</p>
             </div>
           </div>
           <RankingList order={order} onChange={setOrder} />
