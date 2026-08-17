@@ -46,6 +46,19 @@ const goalLabels = {
   "sleep-schedule": "Improve overall sleep schedule",
 };
 
+const compactGoalLabels = {
+  "get-stronger": "Get stronger",
+  "sprint-speed": "Improve sprint speed",
+  agility: "Improve agility",
+  "lose-body-fat": "Lose body fat",
+  "gain-weight": "Gain weight",
+  nutrition: "Improve nutrition",
+  "flexibility-mobility": "Improve flexibility & mobility",
+  conditioning: "Improve stamina & conditioning",
+  "core-strength": "Improve core strength",
+  "sleep-schedule": "Improve sleep schedule",
+};
+
 async function findExecutable() {
   for (const candidate of chromeCandidates) {
     try {
@@ -202,6 +215,101 @@ async function assertCompactRankingLayout(page, width) {
   }
 }
 
+async function assertAdminMobileLayout(page, width) {
+  const result = await page.evaluate(() => {
+    function visible(element) {
+      if (!element) {
+        return false;
+      }
+
+      const styles = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+
+      return styles.display !== "none" && styles.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    }
+
+    function rectFor(selector) {
+      const element = document.querySelector(selector);
+
+      if (!element) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+
+      return {
+        height: rect.height,
+        width: rect.width,
+      };
+    }
+
+    const clientWidth = document.documentElement.clientWidth;
+    const clippedText = Array.from(
+      document.querySelectorAll(".priority-main strong, .mini-bar-row span, .player-card strong"),
+    ).flatMap((element) => {
+      const rect = element.getBoundingClientRect();
+
+      if (rect.left < -1 || rect.right > clientWidth + 1) {
+        return [element.textContent?.trim() || "unknown"];
+      }
+
+      return [];
+    });
+    const exportVisible = Array.from(document.querySelectorAll("button")).some((button) => {
+      return (button.textContent || "").includes("Export CSV") && visible(button);
+    });
+
+    return {
+      header: rectFor(".admin-header"),
+      tabs: rectFor(".tabs"),
+      deleteButton: rectFor(".delete-icon-button"),
+      refreshButton: rectFor(".refresh-button"),
+      metricCount: document.querySelectorAll(".metric-card").length,
+      priorityRows: document.querySelectorAll(".priority-row").length,
+      priorityTitle: document.body.innerText.includes("Team Priorities"),
+      exportVisible,
+      clippedText,
+      bodyText: document.body.innerText,
+    };
+  });
+
+  if (!result.header || result.header.height > 76) {
+    throw new Error(`admin-${width}: compact header height is off (${result.header?.height})`);
+  }
+
+  if (!result.tabs || result.tabs.height > 54) {
+    throw new Error(`admin-${width}: tabs are too tall (${result.tabs?.height})`);
+  }
+
+  if (!result.refreshButton || result.refreshButton.width > 45 || result.refreshButton.height > 45) {
+    throw new Error(`admin-${width}: refresh control is not compact`);
+  }
+
+  if (!result.deleteButton || result.deleteButton.width > 45 || result.deleteButton.height > 45) {
+    throw new Error(`admin-${width}: delete control is not compact`);
+  }
+
+  if (result.metricCount !== 4) {
+    throw new Error(`admin-${width}: expected 4 summary cards, got ${result.metricCount}`);
+  }
+
+  if (!result.priorityTitle || result.priorityRows !== goals.length) {
+    throw new Error(`admin-${width}: team priorities are missing or incomplete`);
+  }
+
+  if (result.exportVisible) {
+    throw new Error(`admin-${width}: Export CSV is visible in the mobile overview header`);
+  }
+
+  if (result.clippedText.length > 0) {
+    throw new Error(`admin-${width}: clipped goal text: ${result.clippedText.join(", ")}`);
+  }
+
+  if (result.bodyText.includes("NaN")) {
+    throw new Error(`admin-${width}: dashboard rendered NaN`);
+  }
+}
+
 async function dispatchTouchDrag(page, sourceLocator, targetLocator) {
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
@@ -254,6 +362,10 @@ async function run() {
     deviceScaleFactor: 3,
     isMobile: true,
     hasTouch: true,
+    acceptDownloads: true,
+  });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(baseUrl).origin,
   });
   const page = await context.newPage();
   page.on("console", (message) => {
@@ -325,14 +437,34 @@ async function run() {
   await page.setViewportSize({ width: 1180, height: 900 });
   await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Coach Results" }).waitFor();
-  await page.getByText("Team Goal Analysis").waitFor();
+  await page.getByText("Team Priorities").waitFor();
   await assertNoOverflow(page, "admin-overview");
   await page.screenshot({
     path: path.join(screenshotDir, "admin-overview.png"),
     fullPage: true,
   });
 
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await assertNoOverflow(page, "admin-ipad");
+  await page.screenshot({
+    path: path.join(screenshotDir, "admin-ipad.png"),
+    fullPage: true,
+  });
+
+  for (const width of [320, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
+    await page.getByText("Team Priorities").waitFor();
+    await assertNoOverflow(page, `admin-mobile-${width}`);
+    await assertAdminMobileLayout(page, width);
+    await page.screenshot({
+      path: path.join(screenshotDir, `admin-mobile-${width}.png`),
+      fullPage: true,
+    });
+  }
+
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
   await assertNoOverflow(page, "admin-mobile-overview");
   await page.screenshot({
     path: path.join(screenshotDir, "admin-mobile-overview.png"),
@@ -356,15 +488,58 @@ async function run() {
     throw new Error("Strength summary missing from analysis.");
   }
 
-  await page.getByRole("button", { name: "Players" }).click();
+  await page.getByLabel("Refresh results").click();
+  await page.waitForTimeout(250);
+  await assertNoOverflow(page, "admin-refresh");
+
+  await page.getByRole("button", { name: /^Players$/ }).click();
+  await page.getByRole("heading", { name: "Player Responses" }).waitFor();
+  await assertNoOverflow(page, "admin-players");
+  await page.screenshot({
+    path: path.join(screenshotDir, "admin-players-390.png"),
+    fullPage: true,
+  });
   await page.getByPlaceholder("Search players").fill(secondPlayerName);
   await page.getByText(secondPlayerName).first().waitFor();
-  await page.getByLabel("#1 Priority").selectOption("core-strength");
+  await page.getByLabel("Filter player responses").click();
+  await page.locator("#player-filter-panel select").nth(1).selectOption("core-strength");
   await page.getByRole("button", { name: new RegExp(secondPlayerName) }).click();
-  await page.getByRole("dialog").getByText("Improve core strength").waitFor();
+  await page
+    .getByRole("dialog")
+    .locator(".top-priority-callout strong")
+    .filter({ hasText: "Improve core strength" })
+    .waitFor();
+  await assertNoOverflow(page, "admin-player-detail");
+  await page.screenshot({
+    path: path.join(screenshotDir, "admin-player-detail-390.png"),
+    fullPage: true,
+  });
   await page.getByLabel("Close player response").click();
 
-  await page.getByRole("button", { name: "Share" }).click();
+  await page.getByPlaceholder("Search players").fill("");
+  await page.locator("#player-filter-panel select").nth(1).selectOption("all");
+  const playerCards = page.locator(".player-card");
+  const playerCount = await playerCards.count();
+
+  if (playerCount < 2) {
+    throw new Error(`Expected at least 2 player cards, found ${playerCount}`);
+  }
+
+  for (let index = 0; index < playerCount; index += 1) {
+    const card = playerCards.nth(index);
+    const playerName = (await card.locator("span").first().textContent())?.trim();
+
+    if (!playerName) {
+      throw new Error(`Player card ${index + 1} is missing a name.`);
+    }
+
+    await card.click();
+    await page.getByRole("dialog").getByRole("heading", { name: playerName, exact: true }).waitFor();
+    await page.getByRole("dialog").getByText("#1 Priority").waitFor();
+    await page.getByLabel("Close player response").click();
+  }
+
+  await page.getByRole("button", { name: /^Share$/ }).click();
   await page.locator(".qr-frame img").waitFor();
   await assertNoOverflow(page, "admin-share");
   await page.screenshot({
@@ -376,10 +551,111 @@ async function run() {
     throw new Error("QR code did not render as a PNG data URL.");
   }
 
+  const qrDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download QR Code" }).click();
+  const qrDownload = await qrDownloadPromise;
+  if (!qrDownload.suggestedFilename().endsWith(".png")) {
+    throw new Error(`Unexpected QR filename: ${qrDownload.suggestedFilename()}`);
+  }
+
+  await page.getByRole("button", { name: "Copy Link" }).click();
+  const copiedLink = await page.evaluate(() => navigator.clipboard.readText());
+  const expectedSurveyLink = new URL("/", baseUrl).href;
+  if (copiedLink !== expectedSurveyLink) {
+    throw new Error(`Copy link copied ${copiedLink}, expected ${expectedSurveyLink}`);
+  }
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const download = await downloadPromise;
+  if (!download.suggestedFilename().endsWith(".csv")) {
+    throw new Error(`Unexpected CSV filename: ${download.suggestedFilename()}`);
+  }
+
   const csvResponse = await page.context().request.get(`${baseUrl}/api/admin/export`);
   const csv = await csvResponse.text();
   if (!csvResponse.ok() || !csv.includes("Player name") || !csv.includes(secondPlayerName)) {
     throw new Error("CSV export did not include expected headers/player data.");
+  }
+
+  const totalBeforeDelete = analytics.analysis.totalResponses;
+  await page.getByLabel("Delete all submissions").click();
+  let deleteDialog = page.getByRole("dialog", { name: "Delete all submissions?" });
+  await deleteDialog.waitFor();
+  const destructiveButton = deleteDialog.getByRole("button", { name: "Delete All Submissions" });
+
+  if (!(await destructiveButton.isDisabled())) {
+    throw new Error("Delete button should be disabled before confirmation text.");
+  }
+
+  await deleteDialog.getByLabel("Type DELETE to confirm deletion").fill("delete");
+  if (!(await destructiveButton.isDisabled())) {
+    throw new Error("Delete button should stay disabled for lowercase confirmation.");
+  }
+  await assertNoOverflow(page, "admin-delete-dialog");
+  await page.screenshot({
+    path: path.join(screenshotDir, "admin-delete-dialog-390.png"),
+    fullPage: true,
+  });
+
+  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+  await deleteDialog.waitFor({ state: "hidden" });
+
+  const preservedAnalytics = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/responses", { cache: "no-store" });
+    return response.json();
+  });
+
+  if (preservedAnalytics.analysis.totalResponses !== totalBeforeDelete) {
+    throw new Error("Canceling delete changed the response data.");
+  }
+
+  await page.getByLabel("Delete all submissions").click();
+  deleteDialog = page.getByRole("dialog", { name: "Delete all submissions?" });
+  await deleteDialog.waitFor();
+  await deleteDialog.getByLabel("Type DELETE to confirm deletion").fill("DELETE");
+  if (await deleteDialog.getByRole("button", { name: "Delete All Submissions" }).isDisabled()) {
+    throw new Error("DELETE confirmation did not enable the destructive action.");
+  }
+
+  await deleteDialog.getByRole("button", { name: "Delete All Submissions" }).click();
+  await page.getByText("All submissions deleted").waitFor();
+
+  const zeroAnalytics = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/responses", { cache: "no-store" });
+    return response.json();
+  });
+
+  if (zeroAnalytics.responses.length !== 0 || zeroAnalytics.analysis.totalResponses !== 0) {
+    throw new Error("Delete all did not clear response data.");
+  }
+
+  const brokenZeroSummary = zeroAnalytics.analysis.summaries.some((summary) => {
+    return !Number.isFinite(summary.averageRank) || !Number.isFinite(summary.top3Percent);
+  });
+
+  if (brokenZeroSummary) {
+    throw new Error("Zero-response analysis contains non-finite values.");
+  }
+
+  await page.getByRole("button", { name: /^Overview$/ }).click();
+  await page.getByText("No responses yet").waitFor();
+  await assertNoOverflow(page, "admin-empty-overview");
+
+  await page.getByRole("button", { name: /^Players$/ }).click();
+  await page.getByText("No responses yet").waitFor();
+  await assertNoOverflow(page, "admin-empty-players");
+
+  await page.getByRole("button", { name: /^Share$/ }).click();
+  await page.locator(".qr-frame img").waitFor();
+  await page.getByLabel("Refresh results").click();
+  await page.waitForTimeout(250);
+  await assertNoOverflow(page, "admin-empty-share");
+
+  const emptyCsvResponse = await page.context().request.get(`${baseUrl}/api/admin/export`);
+  const emptyCsv = await emptyCsvResponse.text();
+  if (!emptyCsvResponse.ok() || !emptyCsv.includes("Player name") || emptyCsv.includes(primaryPlayerName)) {
+    throw new Error("CSV export did not handle the empty response set.");
   }
 
   if (consoleErrors.length > 0) {
@@ -394,7 +670,8 @@ async function run() {
         ok: true,
         baseUrl,
         screenshots: screenshotDir,
-        totalResponses: analytics.analysis.totalResponses,
+        totalResponsesBeforeDelete: totalBeforeDelete,
+        totalResponsesAfterDelete: zeroAnalytics.analysis.totalResponses,
         topTeamPriority: analytics.analysis.topTeamPriority?.goalLabel ?? null,
       },
       null,

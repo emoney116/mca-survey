@@ -219,6 +219,28 @@ export async function listResponses(): Promise<SurveyResponse[]> {
   return ((data ?? []) as SupabaseResponseRow[]).map(normalizeSupabaseResponse);
 }
 
+export async function deleteAllResponses(): Promise<number> {
+  const storage = ensureStorageAvailable();
+
+  if (storage === "dev") {
+    const records = await readDevRecords();
+    await writeDevRecords([]);
+    return records.length;
+  }
+
+  const surveyId = await getActiveSurveyId(storage);
+  const { count, error } = await storage
+    .from("survey_responses")
+    .delete({ count: "exact" })
+    .eq("survey_id", surveyId);
+
+  if (error) {
+    throw new StorageError(error.message);
+  }
+
+  return count ?? 0;
+}
+
 export async function createResponse(input: ResponseInput): Promise<SubmitResult> {
   const storage = ensureStorageAvailable();
   const editToken = createEditToken();

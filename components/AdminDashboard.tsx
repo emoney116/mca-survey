@@ -2,15 +2,19 @@
 
 import QRCode from "qrcode";
 import {
+  AlertTriangle,
   BarChart3,
+  ChevronRight,
   Check,
   Copy,
   Download,
+  Filter,
   Loader2,
   QrCode,
   RefreshCw,
   Search,
   Share2,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +28,20 @@ type AdminPayload = {
 };
 
 type AdminTab = "overview" | "players" | "share";
+type PlayerSort = "name" | "recent" | "priority";
+
+const COMPACT_GOAL_LABELS: Record<GoalKey, string> = {
+  "get-stronger": "Get stronger",
+  "sprint-speed": "Improve sprint speed",
+  agility: "Improve agility",
+  "lose-body-fat": "Lose body fat",
+  "gain-weight": "Gain weight",
+  nutrition: "Improve nutrition",
+  "flexibility-mobility": "Improve flexibility & mobility",
+  conditioning: "Improve stamina & conditioning",
+  "core-strength": "Improve core strength",
+  "sleep-schedule": "Improve sleep schedule",
+};
 
 const emptyAnalysis: SurveyAnalysis = {
   totalResponses: 0,
@@ -55,8 +73,34 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatLastResponse(value: string | null): string {
+  if (!value) {
+    return "None";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatSubmittedDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
 function formatAverage(value: number): string {
   return value > 0 ? value.toFixed(1) : "-";
+}
+
+function compactGoalLabel(goalKey: GoalKey | ""): string {
+  return goalKey ? COMPACT_GOAL_LABELS[goalKey] : "";
+}
+
+function compactSummaryLabel(summary: GoalSummary | null): string {
+  return summary ? compactGoalLabel(summary.goalKey) : "No responses";
 }
 
 function topGoal(response: SurveyResponse): GoalKey | "" {
@@ -64,7 +108,9 @@ function topGoal(response: SurveyResponse): GoalKey | "" {
 }
 
 function rankingLabel(response: SurveyResponse, rank: number): string {
-  return response.rankings.find((ranking) => ranking.rank === rank)?.goalLabel ?? "";
+  const ranking = response.rankings.find((item) => item.rank === rank);
+
+  return ranking ? compactGoalLabel(ranking.goalKey) : "";
 }
 
 function getSurveyUrl(): string {
@@ -92,28 +138,39 @@ function MetricCard({
   );
 }
 
-function PriorityChart({ summaries, totalResponses }: { summaries: GoalSummary[]; totalResponses: number }) {
+function TeamPriorities({
+  summaries,
+  totalResponses,
+}: {
+  summaries: GoalSummary[];
+  totalResponses: number;
+}) {
   return (
-    <section className="dashboard-block" aria-labelledby="priority-chart">
+    <section className="dashboard-block team-priorities" aria-labelledby="team-priorities">
       <div className="block-heading">
         <BarChart3 size={20} aria-hidden="true" />
-        <h2 id="priority-chart">Team Priority Ranking</h2>
+        <h2 id="team-priorities">Team Priorities</h2>
       </div>
-      <div className="bar-list">
+      <p className="priority-note">Lower average rank means stronger team priority.</p>
+      <div className="priority-list">
         {summaries.map((summary) => {
           const width =
             totalResponses > 0 ? Math.max(8, Math.round(((11 - summary.averageRank) / 10) * 100)) : 0;
 
           return (
-            <div className="bar-row" key={summary.goalKey}>
-              <div className="bar-label">
+            <div className="priority-row" key={summary.goalKey}>
+              <div className="priority-main">
                 <span>{summary.teamRank}</span>
-                <strong>{summary.shortLabel}</strong>
+                <strong>{compactGoalLabel(summary.goalKey)}</strong>
               </div>
-              <div className="bar-track" aria-hidden="true">
-                <div className="bar-fill" style={{ width: `${width}%` }} />
+              <div className="priority-track" aria-hidden="true">
+                <div className="priority-fill" style={{ width: `${width}%` }} />
               </div>
-              <span className="bar-value">Avg {formatAverage(summary.averageRank)}</span>
+              <div className="priority-meta">
+                <span>Avg {formatAverage(summary.averageRank)}</span>
+                <span>{summary.firstVotes} #1 votes</span>
+                <span>{summary.top3Percent}% Top 3</span>
+              </div>
             </div>
           );
         })}
@@ -145,7 +202,7 @@ function VoteChart({
 
           return (
             <div className="mini-bar-row" key={summary.goalKey}>
-              <span>{summary.shortLabel}</span>
+              <span>{compactGoalLabel(summary.goalKey)}</span>
               <div className="mini-track" aria-hidden="true">
                 <div className="mini-fill" style={{ width: `${width}%` }} />
               </div>
@@ -160,10 +217,8 @@ function VoteChart({
 
 function GoalTable({ summaries }: { summaries: GoalSummary[] }) {
   return (
-    <section className="dashboard-block" aria-labelledby="team-analysis">
-      <div className="block-heading">
-        <h2 id="team-analysis">Team Goal Analysis</h2>
-      </div>
+    <details className="dashboard-block detail-stats">
+      <summary>Detailed Statistics</summary>
       <div className="table-wrap">
         <table className="analysis-table">
           <thead>
@@ -180,7 +235,7 @@ function GoalTable({ summaries }: { summaries: GoalSummary[] }) {
             {summaries.map((summary) => (
               <tr key={summary.goalKey}>
                 <td>{summary.teamRank}</td>
-                <td>{summary.goalLabel}</td>
+                <td>{compactGoalLabel(summary.goalKey)}</td>
                 <td>{formatAverage(summary.averageRank)}</td>
                 <td>{summary.firstVotes}</td>
                 <td>
@@ -191,18 +246,44 @@ function GoalTable({ summaries }: { summaries: GoalSummary[] }) {
             ))}
           </tbody>
         </table>
+        <div className="analysis-list">
+          {summaries.map((summary) => (
+            <div className="analysis-list-row" key={summary.goalKey}>
+              <div>
+                <span>{summary.teamRank}</span>
+                <strong>{compactGoalLabel(summary.goalKey)}</strong>
+              </div>
+              <p>
+                Avg {formatAverage(summary.averageRank)} &middot; {summary.firstVotes} #1 &middot;{" "}
+                {summary.top3Votes} Top 3 ({summary.top3Percent}%) &middot;{" "}
+                {summary.bottom3Votes} Bottom 3
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }
 
-function SharePanel() {
+function SharePanel({
+  onExport,
+  isExporting,
+}: {
+  onExport: () => void;
+  isExporting: boolean;
+}) {
   const [surveyUrl, setSurveyUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [canNativeShare, setCanNativeShare] = useState(false);
 
   useEffect(() => {
     setSurveyUrl(getSurveyUrl());
+  }, []);
+
+  useEffect(() => {
+    setCanNativeShare(Boolean(navigator.share));
   }, []);
 
   useEffect(() => {
@@ -226,6 +307,22 @@ function SharePanel() {
     window.setTimeout(() => setCopied(false), 1400);
   }
 
+  async function nativeShare() {
+    if (!navigator.share || !surveyUrl) {
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: "Metrolina Baseball Fall Development Survey",
+        text: "Rank your fall development goals.",
+        url: surveyUrl,
+      });
+    } catch {
+      // Ignore canceled native share sheets.
+    }
+  }
+
   function downloadQr() {
     if (!qrDataUrl) {
       return;
@@ -238,42 +335,68 @@ function SharePanel() {
   }
 
   return (
-    <section className="share-card" aria-labelledby="share-survey">
-      <div className="share-copy">
-        <div className="block-heading">
-          <Share2 size={20} aria-hidden="true" />
-          <h2 id="share-survey">Share Survey</h2>
+    <div className="share-tab">
+      <section className="share-card" aria-labelledby="share-survey">
+        <div className="share-copy">
+          <div className="block-heading">
+            <Share2 size={20} aria-hidden="true" />
+            <h2 id="share-survey">Share Survey</h2>
+          </div>
+          <div className="link-box">
+            <span>{surveyUrl || "Loading link..."}</span>
+            <button type="button" className="secondary-icon-button" onClick={copyLink} disabled={!surveyUrl}>
+              {copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+              {copied ? "Copied" : "Copy Link"}
+            </button>
+          </div>
+          <div className="share-actions-row">
+            {canNativeShare ? (
+              <button type="button" className="secondary-button" onClick={nativeShare} disabled={!surveyUrl}>
+                <Share2 size={18} aria-hidden="true" />
+                Share Survey
+              </button>
+            ) : null}
+            <button type="button" className="secondary-button" onClick={downloadQr} disabled={!qrDataUrl}>
+              <Download size={18} aria-hidden="true" />
+              Download QR Code
+            </button>
+          </div>
         </div>
-        <div className="link-box">
-          <span>{surveyUrl || "Loading link..."}</span>
-          <button type="button" className="secondary-icon-button" onClick={copyLink} disabled={!surveyUrl}>
-            {copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
-            {copied ? "Copied" : "Copy Link"}
-          </button>
+        <div className="qr-frame">
+          {qrDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={qrDataUrl} alt="QR code for the Metrolina survey link" />
+          ) : (
+            <QrCode size={88} aria-hidden="true" />
+          )}
         </div>
-        <button type="button" className="secondary-button" onClick={downloadQr} disabled={!qrDataUrl}>
+      </section>
+      <section className="data-card" aria-labelledby="share-data">
+        <div>
+          <span>Data</span>
+          <h2 id="share-data">CSV Export</h2>
+        </div>
+        <button type="button" className="secondary-button" onClick={onExport} disabled={isExporting}>
           <Download size={18} aria-hidden="true" />
-          Download QR Code
+          {isExporting ? "Exporting" : "Export CSV"}
         </button>
-      </div>
-      <div className="qr-frame">
-        {qrDataUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrDataUrl} alt="QR code for the Metrolina survey link" />
-        ) : (
-          <QrCode size={88} aria-hidden="true" />
-        )}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
-function EmptyState() {
+function EmptyState({
+  onExport,
+  isExporting,
+}: {
+  onExport: () => void;
+  isExporting: boolean;
+}) {
   return (
     <div className="empty-state">
       <h2>No responses yet</h2>
       <p>Share the survey link with your players and responses will appear here automatically.</p>
-      <SharePanel />
+      <SharePanel onExport={onExport} isExporting={isExporting} />
     </div>
   );
 }
@@ -285,6 +408,8 @@ function PlayerDetail({
   response: SurveyResponse;
   onClose: () => void;
 }) {
+  const firstGoal = response.rankings.find((ranking) => ranking.rank === 1);
+
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <section className="player-detail" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -292,27 +417,38 @@ function PlayerDetail({
           <X size={20} aria-hidden="true" />
         </button>
         <div className="detail-header">
-          <span>Player Response</span>
           <h2>{response.playerName}</h2>
-          <p>{formatDateTime(response.createdAt)}</p>
+          <p>Submitted {formatDateTime(response.createdAt)}</p>
+        </div>
+        <div className="top-priority-callout">
+          <span>#1 Priority</span>
+          <strong>{firstGoal ? compactGoalLabel(firstGoal.goalKey) : "No #1 ranking"}</strong>
         </div>
         <ol className="detail-ranking">
           {response.rankings.map((ranking) => (
-            <li key={ranking.goalKey}>
+            <li key={ranking.goalKey} className={ranking.rank <= 3 ? "is-top-three" : ""}>
               <span>{ranking.rank}</span>
-              {ranking.goalLabel}
+              {compactGoalLabel(ranking.goalKey)}
             </li>
           ))}
         </ol>
         <div className="written-responses">
-          <div>
-            <span>Personal Goal</span>
-            <p>{response.personalGoal || "No response"}</p>
-          </div>
-          <div>
-            <span>Additional Notes</span>
-            <p>{response.additionalNotes || "No response"}</p>
-          </div>
+          {response.personalGoal ? (
+            <div>
+              <span>Personal Goal</span>
+              <p>{response.personalGoal}</p>
+            </div>
+          ) : (
+            <p className="quiet-empty">Personal Goal: No response.</p>
+          )}
+          {response.additionalNotes ? (
+            <div>
+              <span>Additional Notes</span>
+              <p>{response.additionalNotes}</p>
+            </div>
+          ) : (
+            <p className="quiet-empty">Additional Notes: No response.</p>
+          )}
         </div>
       </section>
     </div>
@@ -322,23 +458,41 @@ function PlayerDetail({
 function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
   const [query, setQuery] = useState("");
   const [goalFilter, setGoalFilter] = useState<GoalKey | "all">("all");
+  const [sortMode, setSortMode] = useState<PlayerSort>("name");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<SurveyResponse | null>(null);
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return responses.filter((response) => {
-      const matchesName =
-        !normalizedQuery || response.playerName.toLowerCase().includes(normalizedQuery);
-      const matchesGoal = goalFilter === "all" || topGoal(response) === goalFilter;
+    return responses
+      .filter((response) => {
+        const matchesName =
+          !normalizedQuery || response.playerName.toLowerCase().includes(normalizedQuery);
+        const matchesGoal = goalFilter === "all" || topGoal(response) === goalFilter;
 
-      return matchesName && matchesGoal;
-    });
-  }, [goalFilter, query, responses]);
+        return matchesName && matchesGoal;
+      })
+      .sort((a, b) => {
+        if (sortMode === "recent") {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }
+
+        if (sortMode === "priority") {
+          return rankingLabel(a, 1).localeCompare(rankingLabel(b, 1));
+        }
+
+        return a.playerName.localeCompare(b.playerName);
+      });
+  }, [goalFilter, query, responses, sortMode]);
 
   return (
     <section className="players-panel">
-      <div className="player-filters">
+      <div className="players-heading">
+        <h2>Player Responses</h2>
+        <span>{filtered.length} shown</span>
+      </div>
+      <div className="player-toolbar">
         <label className="search-field">
           <Search size={18} aria-hidden="true" />
           <input
@@ -347,6 +501,27 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search players"
           />
+        </label>
+        <button
+          type="button"
+          className={`filter-toggle ${filtersOpen ? "is-active" : ""}`}
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+          aria-controls="player-filter-panel"
+          aria-label="Filter player responses"
+          title="Filter player responses"
+        >
+          <Filter size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <div id="player-filter-panel" className={`player-filters ${filtersOpen ? "is-open" : ""}`}>
+        <label className="select-field">
+          <span>Sort</span>
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as PlayerSort)}>
+            <option value="name">Name</option>
+            <option value="recent">Most recent</option>
+            <option value="priority">#1 priority</option>
+          </select>
         </label>
         <label className="select-field">
           <span>#1 Priority</span>
@@ -357,7 +532,7 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
             <option value="all">All goals</option>
             {GOALS.map((goal) => (
               <option key={goal.key} value={goal.key}>
-                {goal.label}
+                {compactGoalLabel(goal.key)}
               </option>
             ))}
           </select>
@@ -378,14 +553,9 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
                 onClick={() => setSelected(response)}
               >
                 <span>{response.playerName}</span>
-                <strong>{firstGoal?.label ?? "No #1 ranking"}</strong>
-                <ol>
-                  {Array.from({ length: 4 }, (_, index) => index + 1).map((rank) => (
-                    <li key={rank}>
-                      {rank}. {rankingLabel(response, rank)}
-                    </li>
-                  ))}
-                </ol>
+                <strong>#1 {firstGoal ? compactGoalLabel(firstGoal.key) : "No #1 ranking"}</strong>
+                <small>Submitted {formatSubmittedDate(response.createdAt)}</small>
+                <ChevronRight size={20} aria-hidden="true" />
               </button>
             );
           })}
@@ -393,6 +563,81 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
       )}
       {selected ? <PlayerDetail response={selected} onClose={() => setSelected(null)} /> : null}
     </section>
+  );
+}
+
+function DeleteAllDialog({
+  onCancel,
+  onConfirm,
+  isDeleting,
+  error,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  isDeleting: boolean;
+  error: string;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const canDelete = confirmation === "DELETE" && !isDeleting;
+
+  return (
+    <div
+      className="modal-backdrop delete-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!isDeleting) {
+          onCancel();
+        }
+      }}
+    >
+      <section
+        className="delete-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="delete-dialog-icon">
+          <AlertTriangle size={22} aria-hidden="true" />
+        </div>
+        <div className="delete-dialog-copy">
+          <h2 id="delete-dialog-title">Delete all submissions?</h2>
+          <p id="delete-dialog-description">
+            This will permanently delete every current survey response and all associated rankings.
+            This cannot be undone.
+          </p>
+        </div>
+        <label className="delete-confirm-field">
+          <span>
+            Type <strong>DELETE</strong> to confirm
+          </span>
+          <input
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            autoCapitalize="characters"
+            autoComplete="off"
+            autoFocus
+            spellCheck={false}
+            aria-label="Type DELETE to confirm deletion"
+          />
+        </label>
+        {error ? <p className="delete-error">{error}</p> : null}
+        <div className="delete-dialog-actions">
+          <button type="button" className="secondary-button" onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </button>
+          <button type="button" className="danger-button" onClick={onConfirm} disabled={!canDelete}>
+            {isDeleting ? "Deleting" : "Delete All Submissions"}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -404,6 +649,12 @@ export function AdminDashboard() {
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [toast, setToast] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   async function loadData(silent = false) {
@@ -436,6 +687,8 @@ export function AdminDashboard() {
   }
 
   async function handleExport() {
+    setIsExporting(true);
+
     try {
       const response = await fetch("/api/admin/export", {
         cache: "no-store",
@@ -455,6 +708,45 @@ export function AdminDashboard() {
       URL.revokeObjectURL(url);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export CSV.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadData(true);
+    setIsRefreshing(false);
+  }
+
+  async function handleDeleteAllSubmissions() {
+    setIsDeleting(true);
+    setDeleteError("");
+
+    try {
+      const response = await fetch("/api/admin/responses", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ confirmation: "DELETE" }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to delete submissions.");
+      }
+
+      setDeleteDialogOpen(false);
+      setToast("All submissions deleted");
+      await loadData(true);
+      window.setTimeout(() => setToast(""), 2400);
+    } catch (deleteAllError) {
+      setDeleteError(
+        deleteAllError instanceof Error ? deleteAllError.message : "Unable to delete submissions.",
+      );
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -492,13 +784,32 @@ export function AdminDashboard() {
           </div>
         </div>
         <div className="admin-actions">
-          <button type="button" className="secondary-icon-button" onClick={() => loadData()}>
-            <RefreshCw size={18} aria-hidden="true" />
-            Refresh
+          <button
+            type="button"
+            className="delete-icon-button"
+            onClick={() => {
+              setDeleteError("");
+              setDeleteDialogOpen(true);
+            }}
+            aria-label="Delete all submissions"
+            title="Delete all submissions"
+            disabled={isDeleting}
+          >
+            <Trash2 size={18} aria-hidden="true" />
           </button>
-          <button type="button" className="secondary-icon-button" onClick={handleExport}>
+          <button
+            type="button"
+            className="refresh-button"
+            onClick={handleRefresh}
+            aria-label="Refresh results"
+            title="Refresh results"
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={isRefreshing ? "spin" : ""} size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="secondary-icon-button desktop-export" onClick={handleExport} disabled={isExporting}>
             <Download size={18} aria-hidden="true" />
-            Export CSV
+            {isExporting ? "Exporting" : "Export CSV"}
           </button>
         </div>
       </header>
@@ -521,15 +832,14 @@ export function AdminDashboard() {
       {activeTab === "overview" ? (
         <div className="dashboard-grid">
           <section className="metrics-grid" aria-label="Survey summary">
-            <MetricCard label="Responses" value={`${analysis.totalResponses}`} detail="Total submitted" />
+            <MetricCard label="Responses" value={`${analysis.totalResponses}`} />
             <MetricCard
-              label="Top Team Priority"
-              value={analysis.topTeamPriority?.goalLabel ?? "No responses"}
-              detail="Lowest average rank"
+              label="Top Priority"
+              value={compactSummaryLabel(analysis.topTeamPriority)}
             />
             <MetricCard
-              label="Most Common #1"
-              value={analysis.mostCommonNumberOne?.goalLabel ?? "No responses"}
+              label="Most #1 Votes"
+              value={compactSummaryLabel(analysis.mostCommonNumberOne)}
               detail={
                 analysis.mostCommonNumberOne
                   ? `${analysis.mostCommonNumberOne.firstVotes} first-place votes`
@@ -538,16 +848,16 @@ export function AdminDashboard() {
             />
             <MetricCard
               label="Last Response"
-              value={formatDateTime(analysis.lastResponseAt)}
+              value={formatLastResponse(analysis.lastResponseAt)}
               detail={lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : undefined}
             />
           </section>
 
           {!hasResponses ? (
-            <EmptyState />
+            <EmptyState onExport={handleExport} isExporting={isExporting} />
           ) : (
             <>
-              <PriorityChart summaries={analysis.summaries} totalResponses={analysis.totalResponses} />
+              <TeamPriorities summaries={analysis.summaries} totalResponses={analysis.totalResponses} />
               <div className="chart-pair">
                 <VoteChart title="#1 Choices" summaries={analysis.summaries} metric="firstVotes" />
                 <VoteChart title="Top-3 Frequency" summaries={analysis.summaries} metric="top3Votes" />
@@ -562,11 +872,29 @@ export function AdminDashboard() {
         hasResponses ? (
           <PlayersPanel responses={responses} />
         ) : (
-          <EmptyState />
+          <EmptyState onExport={handleExport} isExporting={isExporting} />
         )
       ) : null}
 
-      {activeTab === "share" ? <SharePanel /> : null}
+      {activeTab === "share" ? <SharePanel onExport={handleExport} isExporting={isExporting} /> : null}
+
+      {deleteDialogOpen ? (
+        <DeleteAllDialog
+          error={deleteError}
+          isDeleting={isDeleting}
+          onCancel={() => {
+            if (!isDeleting) {
+              setDeleteDialogOpen(false);
+            }
+          }}
+          onConfirm={handleDeleteAllSubmissions}
+        />
+      ) : null}
+      {toast ? (
+        <div className="admin-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
     </main>
   );
 }
