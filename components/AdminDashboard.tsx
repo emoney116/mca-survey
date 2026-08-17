@@ -7,16 +7,13 @@ import {
   Copy,
   Download,
   Loader2,
-  Lock,
-  LogOut,
   QrCode,
   RefreshCw,
   Search,
   Share2,
-  Users,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GOALS, getGoalByKey, type GoalKey } from "@/lib/goals";
 import type { GoalSummary, SurveyAnalysis, SurveyResponse } from "@/lib/types";
 import { MetrolinaLogo } from "@/components/MetrolinaLogo";
@@ -27,7 +24,6 @@ type AdminPayload = {
 };
 
 type AdminTab = "overview" | "players" | "share";
-type AuthState = "checking" | "login" | "authed";
 
 const emptyAnalysis: SurveyAnalysis = {
   totalResponses: 0,
@@ -400,57 +396,7 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
   );
 }
 
-function LoginPanel({
-  onLogin,
-  error,
-  isSubmitting,
-}: {
-  onLogin: (password: string) => void;
-  error: string;
-  isSubmitting: boolean;
-}) {
-  const [password, setPassword] = useState("");
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    onLogin(password);
-  }
-
-  return (
-    <main className="admin-login-shell">
-      <form className="admin-login-card" onSubmit={handleSubmit}>
-        <MetrolinaLogo className="admin-login-logo" priority />
-        <div className="login-title">
-          <Lock size={22} aria-hidden="true" />
-          <h1>Coach Dashboard</h1>
-        </div>
-        <input
-          className="text-input"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Admin password"
-          autoComplete="current-password"
-          required
-        />
-        {error ? <p className="form-message">{error}</p> : null}
-        <button type="submit" className="primary-button" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="spin" size={20} aria-hidden="true" />
-              Signing In
-            </>
-          ) : (
-            "Sign In"
-          )}
-        </button>
-      </form>
-    </main>
-  );
-}
-
 export function AdminDashboard() {
-  const [authState, setAuthState] = useState<AuthState>("checking");
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [data, setData] = useState<AdminPayload>({
     responses: [],
@@ -458,7 +404,6 @@ export function AdminDashboard() {
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   async function loadData(silent = false) {
@@ -471,12 +416,6 @@ export function AdminDashboard() {
         cache: "no-store",
       });
 
-      if (response.status === 401) {
-        setAuthState("login");
-        setIsLoading(false);
-        return;
-      }
-
       const payload = (await response.json()) as AdminPayload & { error?: string };
 
       if (!response.ok) {
@@ -487,7 +426,6 @@ export function AdminDashboard() {
         responses: payload.responses,
         analysis: payload.analysis,
       });
-      setAuthState("authed");
       setLastUpdated(new Date());
       setError("");
     } catch (loadError) {
@@ -495,38 +433,6 @@ export function AdminDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }
-
-  async function handleLogin(password: string) {
-    setIsLoggingIn(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ password }),
-      });
-      const payload = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to sign in.");
-      }
-
-      await loadData();
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Unable to sign in.");
-    } finally {
-      setIsLoggingIn(false);
-    }
-  }
-
-  async function handleLogout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    setAuthState("login");
-    setData({ responses: [], analysis: emptyAnalysis });
   }
 
   async function handleExport() {
@@ -557,27 +463,19 @@ export function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (authState !== "authed") {
-      return;
-    }
-
     const timer = window.setInterval(() => {
       loadData(true);
     }, 6000);
 
     return () => window.clearInterval(timer);
-  }, [authState]);
+  }, []);
 
-  if (authState === "checking" && isLoading) {
+  if (isLoading) {
     return (
       <main className="admin-loading">
         <Loader2 className="spin" size={26} aria-hidden="true" />
       </main>
     );
-  }
-
-  if (authState !== "authed") {
-    return <LoginPanel onLogin={handleLogin} error={error} isSubmitting={isLoggingIn} />;
   }
 
   const { analysis, responses } = data;
@@ -601,15 +499,6 @@ export function AdminDashboard() {
           <button type="button" className="secondary-icon-button" onClick={handleExport}>
             <Download size={18} aria-hidden="true" />
             Export CSV
-          </button>
-          <button
-            type="button"
-            className="icon-only-button"
-            onClick={handleLogout}
-            aria-label="Sign out"
-            title="Sign out"
-          >
-            <LogOut size={19} aria-hidden="true" />
           </button>
         </div>
       </header>

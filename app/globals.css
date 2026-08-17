@@ -105,8 +105,7 @@ button:disabled {
 
 .survey-header h1,
 .confirmation-card h1,
-.admin-header h1,
-.admin-login-card h1 {
+.admin-header h1 {
   margin: 0;
   color: var(--ink);
   font-weight: 760;
@@ -269,7 +268,6 @@ button:disabled {
 
 .icon-button,
 .drag-handle,
-.icon-only-button,
 .secondary-icon-button {
   display: inline-flex;
   align-items: center;
@@ -311,8 +309,7 @@ button:disabled {
 .drag-handle:hover,
 .icon-button:not(:disabled):hover,
 .secondary-icon-button:hover,
-.secondary-button:hover,
-.icon-only-button:hover {
+.secondary-button:hover {
   background: var(--accent-soft);
   color: var(--accent-dark);
 }
@@ -389,7 +386,6 @@ button:disabled {
 }
 
 .confirmation-shell,
-.admin-login-shell,
 .admin-loading {
   display: grid;
   min-height: 100vh;
@@ -397,8 +393,7 @@ button:disabled {
   padding: 22px 14px;
 }
 
-.confirmation-card,
-.admin-login-card {
+.confirmation-card {
   width: min(100%, 430px);
   padding: 28px;
   border: 1px solid var(--border);
@@ -408,8 +403,7 @@ button:disabled {
   text-align: center;
 }
 
-.confirmation-logo,
-.admin-login-logo {
+.confirmation-logo {
   width: 120px;
   height: auto;
   object-fit: contain;
@@ -493,12 +487,6 @@ button:disabled {
   border: 1px solid var(--border);
   background: #fff;
   font-weight: 720;
-}
-
-.icon-only-button {
-  width: 44px;
-  border: 1px solid var(--border);
-  background: #fff;
 }
 
 .tabs {
@@ -996,29 +984,6 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.admin-login-card {
-  display: grid;
-  gap: 16px;
-  text-align: left;
-}
-
-.admin-login-logo {
-  justify-self: center;
-}
-
-.login-title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  color: var(--accent);
-  text-align: center;
-}
-
-.login-title h1 {
-  font-size: 29px;
-}
-
 .admin-loading {
   color: var(--accent);
 }
@@ -1188,16 +1153,11 @@ button:disabled {
 
   .admin-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .admin-actions .secondary-icon-button,
-  .admin-actions .icon-only-button {
+  .admin-actions .secondary-icon-button {
     width: auto;
-  }
-
-  .icon-only-button {
-    width: 44px;
   }
 
   .qr-frame {
@@ -1226,8 +1186,7 @@ button:disabled {
     font-size: 15px;
   }
 
-  .confirmation-card,
-  .admin-login-card {
+  .confirmation-card {
     padding: 22px;
   }
 }

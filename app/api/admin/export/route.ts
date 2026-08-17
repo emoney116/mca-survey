@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { isAdminRequest } from "@/lib/admin-auth";
 import { responsesToCsv } from "@/lib/csv";
 import { listResponses, StorageError } from "@/lib/storage";
 
@@ -7,10 +6,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!(await isAdminRequest())) {
-    return NextResponse.json({ error: "Admin login required." }, { status: 401 });
-  }
-
   try {
     const responses = await listResponses();
     const csv = responsesToCsv(responses);

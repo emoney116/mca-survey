@@ -3,7 +3,6 @@ import path from "node:path";
 import { chromium } from "playwright-core";
 
 const baseUrl = process.env.TEST_BASE_URL || "http://127.0.0.1:3001";
-const adminPassword = process.env.TEST_ADMIN_PASSWORD || "metrolina-dev-password";
 const screenshotDir = path.join(process.cwd(), ".next", "verification");
 const runId = Date.now().toString().slice(-6);
 const primaryPlayerName = `Verification Player ${runId}`;
@@ -152,11 +151,7 @@ async function run() {
   const page = await context.newPage();
   page.on("console", (message) => {
     if (message.type() === "error") {
-      const text = message.text();
-
-      if (!text.includes("status of 401")) {
-        consoleErrors.push(text);
-      }
+      consoleErrors.push(message.text());
     }
   });
   page.on("pageerror", (error) => {
@@ -219,18 +214,8 @@ async function run() {
     throw new Error(`Second response failed: ${apiResponse.status()} ${await apiResponse.text()}`);
   }
 
-  const lockedContext = await browser.newContext();
-  const lockedResponse = await lockedContext.request.get(`${baseUrl}/api/admin/responses`);
-  await lockedContext.close();
-
-  if (lockedResponse.status() !== 401) {
-    throw new Error(`Admin API should require auth, got ${lockedResponse.status()}`);
-  }
-
   await page.setViewportSize({ width: 1180, height: 900 });
   await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
-  await page.getByPlaceholder("Admin password").fill(adminPassword);
-  await page.getByRole("button", { name: "Sign In" }).click();
   await page.getByRole("heading", { name: "Coach Results" }).waitFor();
   await page.getByText("Team Goal Analysis").waitFor();
   await assertNoOverflow(page, "admin-overview");

@@ -5,14 +5,12 @@ A standalone mobile-first Next.js app for Metrolina Christian Academy Baseball p
 ## Routes
 
 - `/` - player survey
-- `/admin` - password-protected coach dashboard
+- `/admin` - coach dashboard
 
 ## Local Setup
 
 ```bash
 npm install
-$env:ADMIN_PASSWORD="metrolina-dev-password"
-$env:ADMIN_SESSION_SECRET="local-dev-session-secret"
 npm run dev
 ```
 
@@ -28,8 +26,6 @@ Without Supabase env vars, local development uses `data/dev-responses.json` so t
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_SURVEY_ID
-ADMIN_PASSWORD
-ADMIN_SESSION_SECRET
 NEXT_PUBLIC_SURVEY_URL
 ```
 
