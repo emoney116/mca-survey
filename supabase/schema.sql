@@ -56,3 +56,9 @@ alter table survey_rankings enable row level security;
 insert into surveys (id, title, active)
 values ('00000000-0000-4000-8000-000000000001', 'Metrolina Baseball Fall Development Survey', true)
 on conflict (id) do nothing;
+
+grant usage on schema public to service_role;
+
+grant select, insert, update, delete on table public.surveys to service_role;
+grant select, insert, update, delete on table public.survey_responses to service_role;
+grant select, insert, update, delete on table public.survey_rankings to service_role;
