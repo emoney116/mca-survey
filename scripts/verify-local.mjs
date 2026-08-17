@@ -310,6 +310,47 @@ async function assertAdminMobileLayout(page, width) {
   }
 }
 
+async function assertVoteChartsSorted(page) {
+  const result = await page.evaluate(() => {
+    function numbersForChart(title) {
+      const section = Array.from(document.querySelectorAll(".compact-chart")).find((candidate) => {
+        return candidate.querySelector("h2")?.textContent?.trim() === title;
+      });
+
+      if (!section) {
+        return null;
+      }
+
+      return Array.from(section.querySelectorAll(".mini-bar-row strong")).map((element) => {
+        const text = element.textContent?.trim() ?? "0";
+        return Number.parseFloat(text.replace("%", ""));
+      });
+    }
+
+    function isDescending(values) {
+      return values.every((value, index) => index === 0 || value <= values[index - 1]);
+    }
+
+    const firstChoices = numbersForChart("#1 Choices");
+    const topThree = numbersForChart("Top-3 Frequency");
+
+    return {
+      firstChoices,
+      topThree,
+      firstChoicesSorted: firstChoices ? isDescending(firstChoices) : false,
+      topThreeSorted: topThree ? isDescending(topThree) : false,
+    };
+  });
+
+  if (!result.firstChoicesSorted) {
+    throw new Error(`#1 Choices is not sorted descending: ${result.firstChoices?.join(", ")}`);
+  }
+
+  if (!result.topThreeSorted) {
+    throw new Error(`Top-3 Frequency is not sorted descending: ${result.topThree?.join(", ")}`);
+  }
+}
+
 async function dispatchTouchDrag(page, sourceLocator, targetLocator) {
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
@@ -438,6 +479,7 @@ async function run() {
   await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Coach Results" }).waitFor();
   await page.getByText("Team Priorities").waitFor();
+  await assertVoteChartsSorted(page);
   await assertNoOverflow(page, "admin-overview");
   await page.screenshot({
     path: path.join(screenshotDir, "admin-overview.png"),
@@ -455,6 +497,7 @@ async function run() {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`${baseUrl}/admin`, { waitUntil: "networkidle" });
     await page.getByText("Team Priorities").waitFor();
+    await assertVoteChartsSorted(page);
     await assertNoOverflow(page, `admin-mobile-${width}`);
     await assertAdminMobileLayout(page, width);
     await page.screenshot({
@@ -503,7 +546,7 @@ async function run() {
   await page.getByText(secondPlayerName).first().waitFor();
   await page.getByLabel("Filter player responses").click();
   await page.locator("#player-filter-panel select").nth(1).selectOption("core-strength");
-  await page.getByRole("button", { name: new RegExp(secondPlayerName) }).click();
+  await page.getByLabel(`Open ${secondPlayerName} response`).click();
   await page
     .getByRole("dialog")
     .locator(".top-priority-callout strong")
@@ -527,16 +570,74 @@ async function run() {
 
   for (let index = 0; index < playerCount; index += 1) {
     const card = playerCards.nth(index);
-    const playerName = (await card.locator("span").first().textContent())?.trim();
+    const playerName = (await card.locator(".player-card-main span").first().textContent())?.trim();
 
     if (!playerName) {
       throw new Error(`Player card ${index + 1} is missing a name.`);
     }
 
-    await card.click();
+    await card.locator(".player-card-main").click();
     await page.getByRole("dialog").getByRole("heading", { name: playerName, exact: true }).waitFor();
     await page.getByRole("dialog").getByText("#1 Priority").waitFor();
     await page.getByLabel("Close player response").click();
+  }
+
+  const totalBeforeIndividualDelete = (
+    await page.evaluate(async () => {
+      const response = await fetch("/api/admin/responses", { cache: "no-store" });
+      return response.json();
+    })
+  ).analysis.totalResponses;
+
+  await page.getByLabel(`Delete ${secondPlayerName} submission`).click();
+  let individualDeleteDialog = page.getByRole("dialog", { name: "Delete submission?" });
+  await individualDeleteDialog.waitFor();
+  let individualDeleteButton = individualDeleteDialog.getByRole("button", { name: "Delete Submission" });
+
+  if (!(await individualDeleteButton.isDisabled())) {
+    throw new Error("Individual delete button should be disabled before confirmation text.");
+  }
+
+  await individualDeleteDialog.getByLabel("Type DELETE to confirm deletion").fill("delete");
+  if (!(await individualDeleteButton.isDisabled())) {
+    throw new Error("Individual delete button should stay disabled for lowercase confirmation.");
+  }
+
+  await individualDeleteDialog.getByRole("button", { name: "Cancel" }).click();
+  await individualDeleteDialog.waitFor({ state: "hidden" });
+
+  const preservedIndividualAnalytics = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/responses", { cache: "no-store" });
+    return response.json();
+  });
+
+  if (preservedIndividualAnalytics.analysis.totalResponses !== totalBeforeIndividualDelete) {
+    throw new Error("Canceling individual delete changed the response data.");
+  }
+
+  await page.getByLabel(`Delete ${secondPlayerName} submission`).click();
+  individualDeleteDialog = page.getByRole("dialog", { name: "Delete submission?" });
+  await individualDeleteDialog.waitFor();
+  await individualDeleteDialog.getByLabel("Type DELETE to confirm deletion").fill("DELETE");
+  individualDeleteButton = individualDeleteDialog.getByRole("button", { name: "Delete Submission" });
+  if (await individualDeleteButton.isDisabled()) {
+    throw new Error("DELETE confirmation did not enable the individual destructive action.");
+  }
+
+  await individualDeleteButton.click();
+  await page.getByText("Submission deleted").waitFor();
+
+  const afterIndividualDelete = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/responses", { cache: "no-store" });
+    return response.json();
+  });
+
+  if (afterIndividualDelete.analysis.totalResponses !== totalBeforeIndividualDelete - 1) {
+    throw new Error("Individual delete did not remove exactly one response.");
+  }
+
+  if (afterIndividualDelete.responses.some((response) => response.playerName === secondPlayerName)) {
+    throw new Error("Deleted player still appears in admin response data.");
   }
 
   await page.getByRole("button", { name: /^Share$/ }).click();
@@ -574,11 +675,19 @@ async function run() {
 
   const csvResponse = await page.context().request.get(`${baseUrl}/api/admin/export`);
   const csv = await csvResponse.text();
-  if (!csvResponse.ok() || !csv.includes("Player name") || !csv.includes(secondPlayerName)) {
+  if (!csvResponse.ok() || !csv.includes("Player name") || !csv.includes(primaryPlayerName)) {
     throw new Error("CSV export did not include expected headers/player data.");
   }
 
-  const totalBeforeDelete = analytics.analysis.totalResponses;
+  if (csv.includes(secondPlayerName)) {
+    throw new Error("CSV export still includes the individually deleted player.");
+  }
+
+  const beforeDeleteAllAnalytics = await page.evaluate(async () => {
+    const response = await fetch("/api/admin/responses", { cache: "no-store" });
+    return response.json();
+  });
+  const totalBeforeDelete = beforeDeleteAllAnalytics.analysis.totalResponses;
   await page.getByLabel("Delete all submissions").click();
   let deleteDialog = page.getByRole("dialog", { name: "Delete all submissions?" });
   await deleteDialog.waitFor();

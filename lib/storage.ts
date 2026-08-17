@@ -241,6 +241,37 @@ export async function deleteAllResponses(): Promise<number> {
   return count ?? 0;
 }
 
+export async function deleteResponse(responseId: string): Promise<void> {
+  const storage = ensureStorageAvailable();
+
+  if (storage === "dev") {
+    const records = await readDevRecords();
+    const nextRecords = records.filter((record) => record.id !== responseId);
+
+    if (nextRecords.length === records.length) {
+      throw new ResponseNotFoundError();
+    }
+
+    await writeDevRecords(nextRecords);
+    return;
+  }
+
+  const surveyId = await getActiveSurveyId(storage);
+  const { count, error } = await storage
+    .from("survey_responses")
+    .delete({ count: "exact" })
+    .eq("id", responseId)
+    .eq("survey_id", surveyId);
+
+  if (error) {
+    throw new StorageError(error.message);
+  }
+
+  if (!count) {
+    throw new ResponseNotFoundError();
+  }
+}
+
 export async function createResponse(input: ResponseInput): Promise<SubmitResult> {
   const storage = ensureStorageAvailable();
   const editToken = createEditToken();

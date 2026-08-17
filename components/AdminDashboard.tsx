@@ -29,6 +29,9 @@ type AdminPayload = {
 
 type AdminTab = "overview" | "players" | "share";
 type PlayerSort = "name" | "recent" | "priority";
+type DeleteTarget =
+  | { type: "all" }
+  | { type: "response"; response: SurveyResponse };
 
 const COMPACT_GOAL_LABELS: Record<GoalKey, string> = {
   "get-stronger": "Get stronger",
@@ -188,7 +191,18 @@ function VoteChart({
   summaries: GoalSummary[];
   metric: "firstVotes" | "top3Votes";
 }) {
-  const max = Math.max(1, ...summaries.map((summary) => summary[metric]));
+  const sortedSummaries = [...summaries].sort((a, b) => {
+    if (metric === "firstVotes") {
+      return b.firstVotes - a.firstVotes || a.teamRank - b.teamRank;
+    }
+
+    return (
+      b.top3Percent - a.top3Percent ||
+      b.top3Votes - a.top3Votes ||
+      a.teamRank - b.teamRank
+    );
+  });
+  const max = metric === "top3Votes" ? 100 : Math.max(1, ...sortedSummaries.map((summary) => summary.firstVotes));
 
   return (
     <section className="dashboard-block compact-chart" aria-labelledby={title.replaceAll(" ", "-")}>
@@ -196,8 +210,8 @@ function VoteChart({
         <h2 id={title.replaceAll(" ", "-")}>{title}</h2>
       </div>
       <div className="mini-bars">
-        {summaries.map((summary) => {
-          const value = summary[metric];
+        {sortedSummaries.map((summary) => {
+          const value = metric === "top3Votes" ? summary.top3Percent : summary.firstVotes;
           const width = value > 0 ? Math.max(7, Math.round((value / max) * 100)) : 0;
 
           return (
@@ -455,7 +469,15 @@ function PlayerDetail({
   );
 }
 
-function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
+function PlayersPanel({
+  responses,
+  onDeleteResponse,
+  isDeleting,
+}: {
+  responses: SurveyResponse[];
+  onDeleteResponse: (response: SurveyResponse) => void;
+  isDeleting: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [goalFilter, setGoalFilter] = useState<GoalKey | "all">("all");
   const [sortMode, setSortMode] = useState<PlayerSort>("name");
@@ -546,17 +568,29 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
             const firstGoal = getGoalByKey(topGoal(response));
 
             return (
-              <button
-                type="button"
-                className="player-card"
-                key={response.id}
-                onClick={() => setSelected(response)}
-              >
-                <span>{response.playerName}</span>
-                <strong>#1 {firstGoal ? compactGoalLabel(firstGoal.key) : "No #1 ranking"}</strong>
-                <small>Submitted {formatSubmittedDate(response.createdAt)}</small>
-                <ChevronRight size={20} aria-hidden="true" />
-              </button>
+              <div className="player-card" key={response.id}>
+                <button
+                  type="button"
+                  className="player-card-main"
+                  onClick={() => setSelected(response)}
+                  aria-label={`Open ${response.playerName} response`}
+                >
+                  <span>{response.playerName}</span>
+                  <strong>#1 {firstGoal ? compactGoalLabel(firstGoal.key) : "No #1 ranking"}</strong>
+                  <small>Submitted {formatSubmittedDate(response.createdAt)}</small>
+                  <ChevronRight size={20} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="player-delete-button"
+                  onClick={() => onDeleteResponse(response)}
+                  aria-label={`Delete ${response.playerName} submission`}
+                  title="Delete submission"
+                  disabled={isDeleting}
+                >
+                  <Trash2 size={17} aria-hidden="true" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -566,12 +600,18 @@ function PlayersPanel({ responses }: { responses: SurveyResponse[] }) {
   );
 }
 
-function DeleteAllDialog({
+function DeleteConfirmDialog({
+  title,
+  message,
+  buttonLabel,
   onCancel,
   onConfirm,
   isDeleting,
   error,
 }: {
+  title: string;
+  message: string;
+  buttonLabel: string;
   onCancel: () => void;
   onConfirm: () => void;
   isDeleting: boolean;
@@ -602,11 +642,8 @@ function DeleteAllDialog({
           <AlertTriangle size={22} aria-hidden="true" />
         </div>
         <div className="delete-dialog-copy">
-          <h2 id="delete-dialog-title">Delete all submissions?</h2>
-          <p id="delete-dialog-description">
-            This will permanently delete every current survey response and all associated rankings.
-            This cannot be undone.
-          </p>
+          <h2 id="delete-dialog-title">{title}</h2>
+          <p id="delete-dialog-description">{message}</p>
         </div>
         <label className="delete-confirm-field">
           <span>
@@ -633,7 +670,7 @@ function DeleteAllDialog({
             Cancel
           </button>
           <button type="button" className="danger-button" onClick={onConfirm} disabled={!canDelete}>
-            {isDeleting ? "Deleting" : "Delete All Submissions"}
+            {isDeleting ? "Deleting" : buttonLabel}
           </button>
         </div>
       </section>
@@ -652,7 +689,7 @@ export function AdminDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [toast, setToast] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -719,12 +756,20 @@ export function AdminDashboard() {
     setIsRefreshing(false);
   }
 
-  async function handleDeleteAllSubmissions() {
+  async function handleConfirmDeletion() {
+    if (!deleteTarget) {
+      return;
+    }
+
     setIsDeleting(true);
     setDeleteError("");
 
     try {
-      const response = await fetch("/api/admin/responses", {
+      const endpoint =
+        deleteTarget.type === "all"
+          ? "/api/admin/responses"
+          : `/api/admin/responses/${deleteTarget.response.id}`;
+      const response = await fetch(endpoint, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -734,16 +779,16 @@ export function AdminDashboard() {
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to delete submissions.");
+        throw new Error(payload?.error ?? "Unable to delete.");
       }
 
-      setDeleteDialogOpen(false);
-      setToast("All submissions deleted");
+      setDeleteTarget(null);
+      setToast(deleteTarget.type === "all" ? "All submissions deleted" : "Submission deleted");
       await loadData(true);
       window.setTimeout(() => setToast(""), 2400);
-    } catch (deleteAllError) {
+    } catch (deleteErrorValue) {
       setDeleteError(
-        deleteAllError instanceof Error ? deleteAllError.message : "Unable to delete submissions.",
+        deleteErrorValue instanceof Error ? deleteErrorValue.message : "Unable to delete.",
       );
     } finally {
       setIsDeleting(false);
@@ -772,6 +817,20 @@ export function AdminDashboard() {
 
   const { analysis, responses } = data;
   const hasResponses = responses.length > 0;
+  const deleteDialogContent = deleteTarget
+    ? deleteTarget.type === "all"
+      ? {
+          title: "Delete all submissions?",
+          message:
+            "This will permanently delete every current survey response and all associated rankings. This cannot be undone.",
+          buttonLabel: "Delete All Submissions",
+        }
+      : {
+          title: "Delete submission?",
+          message: `This will permanently delete ${deleteTarget.response.playerName}'s survey response and associated rankings. This cannot be undone.`,
+          buttonLabel: "Delete Submission",
+        }
+    : null;
 
   return (
     <main className="admin-shell">
@@ -789,7 +848,7 @@ export function AdminDashboard() {
             className="delete-icon-button"
             onClick={() => {
               setDeleteError("");
-              setDeleteDialogOpen(true);
+              setDeleteTarget({ type: "all" });
             }}
             aria-label="Delete all submissions"
             title="Delete all submissions"
@@ -870,7 +929,14 @@ export function AdminDashboard() {
 
       {activeTab === "players" ? (
         hasResponses ? (
-          <PlayersPanel responses={responses} />
+          <PlayersPanel
+            responses={responses}
+            isDeleting={isDeleting}
+            onDeleteResponse={(response) => {
+              setDeleteError("");
+              setDeleteTarget({ type: "response", response });
+            }}
+          />
         ) : (
           <EmptyState onExport={handleExport} isExporting={isExporting} />
         )
@@ -878,16 +944,19 @@ export function AdminDashboard() {
 
       {activeTab === "share" ? <SharePanel onExport={handleExport} isExporting={isExporting} /> : null}
 
-      {deleteDialogOpen ? (
-        <DeleteAllDialog
+      {deleteDialogContent ? (
+        <DeleteConfirmDialog
+          title={deleteDialogContent.title}
+          message={deleteDialogContent.message}
+          buttonLabel={deleteDialogContent.buttonLabel}
           error={deleteError}
           isDeleting={isDeleting}
           onCancel={() => {
             if (!isDeleting) {
-              setDeleteDialogOpen(false);
+              setDeleteTarget(null);
             }
           }}
-          onConfirm={handleDeleteAllSubmissions}
+          onConfirm={handleConfirmDeletion}
         />
       ) : null}
       {toast ? (
