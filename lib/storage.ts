@@ -19,6 +19,9 @@ type SupabaseRankingRow = {
 type SupabaseResponseRow = {
   id: string;
   player_name: string;
+  hitting_program: string | null;
+  throwing_program: string | null;
+  weight_room_program: string | null;
   personal_goal: string | null;
   additional_notes: string | null;
   created_at: string;
@@ -148,13 +151,22 @@ async function writeDevRecords(records: DevResponseRecord[]): Promise<void> {
 
 function publicResponse(record: DevResponseRecord): SurveyResponse {
   const { editTokenHash: _editTokenHash, ...response } = record;
-  return response;
+
+  return {
+    ...response,
+    hittingProgram: response.hittingProgram ?? "",
+    throwingProgram: response.throwingProgram ?? "",
+    weightRoomProgram: response.weightRoomProgram ?? "",
+  };
 }
 
 function normalizeSupabaseResponse(row: SupabaseResponseRow): SurveyResponse {
   return {
     id: row.id,
     playerName: row.player_name,
+    hittingProgram: row.hitting_program ?? "",
+    throwingProgram: row.throwing_program ?? "",
+    weightRoomProgram: row.weight_room_program ?? "",
     personalGoal: row.personal_goal ?? "",
     additionalNotes: row.additional_notes ?? "",
     createdAt: row.created_at,
@@ -207,7 +219,7 @@ export async function listResponses(): Promise<SurveyResponse[]> {
   const { data, error } = await storage
     .from("survey_responses")
     .select(
-      "id, player_name, personal_goal, additional_notes, created_at, updated_at, survey_rankings(goal_key, goal_label, rank)",
+      "id, player_name, hitting_program, throwing_program, weight_room_program, personal_goal, additional_notes, created_at, updated_at, survey_rankings(goal_key, goal_label, rank)",
     )
     .eq("survey_id", surveyId)
     .order("created_at", { ascending: false });
@@ -283,6 +295,9 @@ export async function createResponse(input: ResponseInput): Promise<SubmitResult
     const response: DevResponseRecord = {
       id: randomUUID(),
       playerName: input.playerName,
+      hittingProgram: input.hittingProgram,
+      throwingProgram: input.throwingProgram,
+      weightRoomProgram: input.weightRoomProgram,
       personalGoal: input.personalGoal,
       additionalNotes: input.additionalNotes,
       createdAt: now,
@@ -306,6 +321,9 @@ export async function createResponse(input: ResponseInput): Promise<SubmitResult
     .insert({
       survey_id: surveyId,
       player_name: input.playerName,
+      hitting_program: input.hittingProgram || null,
+      throwing_program: input.throwingProgram || null,
+      weight_room_program: input.weightRoomProgram || null,
       personal_goal: input.personalGoal || null,
       additional_notes: input.additionalNotes || null,
       edit_token_hash: editTokenHash,
@@ -360,6 +378,9 @@ export async function updateResponse(
     records[index] = {
       ...records[index],
       playerName: input.playerName,
+      hittingProgram: input.hittingProgram,
+      throwingProgram: input.throwingProgram,
+      weightRoomProgram: input.weightRoomProgram,
       personalGoal: input.personalGoal,
       additionalNotes: input.additionalNotes,
       updatedAt: new Date().toISOString(),
@@ -393,6 +414,9 @@ export async function updateResponse(
     .from("survey_responses")
     .update({
       player_name: input.playerName,
+      hitting_program: input.hittingProgram || null,
+      throwing_program: input.throwingProgram || null,
+      weight_room_program: input.weightRoomProgram || null,
       personal_goal: input.personalGoal || null,
       additional_notes: input.additionalNotes || null,
     })

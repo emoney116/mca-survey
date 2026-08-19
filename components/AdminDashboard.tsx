@@ -423,6 +423,11 @@ function PlayerDetail({
   onClose: () => void;
 }) {
   const firstGoal = response.rankings.find((ranking) => ranking.rank === 1);
+  const programs = [
+    { label: "Hitting", value: response.hittingProgram },
+    { label: "Throwing", value: response.throwingProgram },
+    { label: "Weight Room", value: response.weightRoomProgram },
+  ];
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -446,6 +451,19 @@ function PlayerDetail({
             </li>
           ))}
         </ol>
+        <section className="program-responses" aria-labelledby="player-programs-heading">
+          <h3 id="player-programs-heading">Current Training Programs</h3>
+          <div className="program-response-grid">
+            {programs.map((program) => (
+              <div key={program.label}>
+                <span>{program.label}</span>
+                <p className={program.value ? "" : "is-empty"}>
+                  {program.value || "Not provided"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
         <div className="written-responses">
           {response.personalGoal ? (
             <div>

@@ -17,6 +17,9 @@ export function responsesToCsv(responses: SurveyResponse[]): string {
     "Additional notes",
     "Submitted timestamp",
     "Updated timestamp",
+    "Hitting Program",
+    "Throwing Program",
+    "Weight Room Program",
   ];
 
   const rows = responses.map((response) => {
@@ -36,6 +39,9 @@ export function responsesToCsv(responses: SurveyResponse[]): string {
       response.additionalNotes,
       response.createdAt,
       response.updatedAt,
+      response.hittingProgram,
+      response.throwingProgram,
+      response.weightRoomProgram,
     ]
       .map(csvCell)
       .join(",");

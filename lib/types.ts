@@ -9,6 +9,9 @@ export type Ranking = {
 export type SurveyResponse = {
   id: string;
   playerName: string;
+  hittingProgram: string;
+  throwingProgram: string;
+  weightRoomProgram: string;
   personalGoal: string;
   additionalNotes: string;
   createdAt: string;
@@ -18,6 +21,9 @@ export type SurveyResponse = {
 
 export type ResponseInput = {
   playerName: string;
+  hittingProgram: string;
+  throwingProgram: string;
+  weightRoomProgram: string;
   personalGoal: string;
   additionalNotes: string;
   rankings: Ranking[];

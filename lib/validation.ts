@@ -20,6 +20,9 @@ export function parseResponsePayload(payload: unknown): ResponseInput {
 
   const body = payload as Record<string, unknown>;
   const playerName = cleanText(body.playerName, 80);
+  const hittingProgram = cleanText(body.hittingProgram, 700);
+  const throwingProgram = cleanText(body.throwingProgram, 700);
+  const weightRoomProgram = cleanText(body.weightRoomProgram, 700);
   const personalGoal = cleanText(body.personalGoal, 600);
   const additionalNotes = cleanText(body.additionalNotes, 900);
 
@@ -68,6 +71,9 @@ export function parseResponsePayload(payload: unknown): ResponseInput {
 
   return {
     playerName,
+    hittingProgram,
+    throwingProgram,
+    weightRoomProgram,
     personalGoal,
     additionalNotes,
     rankings: rankings.sort((a, b) => a.rank - b.rank),

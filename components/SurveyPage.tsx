@@ -27,6 +27,9 @@ function buildRankings(order: GoalKey[]) {
 
 export function SurveyPage() {
   const [playerName, setPlayerName] = useState("");
+  const [hittingProgram, setHittingProgram] = useState("");
+  const [throwingProgram, setThrowingProgram] = useState("");
+  const [weightRoomProgram, setWeightRoomProgram] = useState("");
   const [personalGoal, setPersonalGoal] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [order, setOrder] = useState<GoalKey[]>([...GOAL_KEYS]);
@@ -65,6 +68,9 @@ export function SurveyPage() {
     const wasEditing = Boolean(savedResponse);
     const body = {
       playerName,
+      hittingProgram,
+      throwingProgram,
+      weightRoomProgram,
       personalGoal,
       additionalNotes,
       rankings,
@@ -166,6 +172,48 @@ export function SurveyPage() {
             </div>
           </div>
           <RankingList order={order} onChange={setOrder} />
+        </section>
+
+        <section className="form-section program-section" aria-labelledby="program-heading">
+          <div className="section-heading">
+            <h2 id="program-heading">Current Training Programs</h2>
+            <p>Tell us what you're currently doing outside of team practices.</p>
+          </div>
+          <div className="program-fields">
+            <label className="program-field" htmlFor="hitting-program">
+              <span>Hitting</span>
+              <textarea
+                id="hitting-program"
+                className="text-area program-area"
+                value={hittingProgram}
+                onChange={(event) => setHittingProgram(event.target.value)}
+                rows={2}
+                placeholder="What is your hitting program?"
+              />
+            </label>
+            <label className="program-field" htmlFor="throwing-program">
+              <span>Throwing</span>
+              <textarea
+                id="throwing-program"
+                className="text-area program-area"
+                value={throwingProgram}
+                onChange={(event) => setThrowingProgram(event.target.value)}
+                rows={2}
+                placeholder="What is your throwing program?"
+              />
+            </label>
+            <label className="program-field" htmlFor="weight-room-program">
+              <span>Weight Room</span>
+              <textarea
+                id="weight-room-program"
+                className="text-area program-area"
+                value={weightRoomProgram}
+                onChange={(event) => setWeightRoomProgram(event.target.value)}
+                rows={2}
+                placeholder="What is your weight room program (When/What are you doing)?"
+              />
+            </label>
+          </div>
         </section>
 
         <section className="form-section">
